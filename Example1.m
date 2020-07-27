@@ -8,7 +8,7 @@
 % June, 2020.
 
 %% generating the test problem
-path(path, './ExtraExample1')
+path(path, './ExtraBilevel')
 
 load('X_544.mat')
 % subimage of a galaxy image available at 
@@ -55,9 +55,6 @@ optsolver.plotty = 'on';
 % run the new bilevel adaptive parameter choice method
 % with the discrepancy principle
 optsolver.RegParam0=1e10;
-
-% run the new bilevel adaptive parameter choice method
-% with the discrepancy principle
 optsolver.RegParam = 'discrepbil';
 optsolver.discrbilStopTol = 1e-3;
 optsolver.RegParamRange = [1e-6, 1e2];
