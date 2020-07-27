@@ -147,13 +147,33 @@ function [X, info] = IRhybrid_lsqr(A, b, varargin)
 %      V        - Golub-Kahan bidiagonalization basis vectors for the solution
 %      U        - Golub-Kahan bidiagonalization basis vectors
 %      B        - lower bidiagonal matrix computed by Golub-Kahan bidiagonalization
-%
+%    RegPrange  - range of regularization parameters where parameter choice
+%                 functionals are evaluated  -- useful to produce plots
+%                                               requires 'plotty' 'on'
+%   DPcurvelow  - lower bounds
+%                 for the discrep. principle -- useful to produce plots
+%                                               requires 'plotty' 'on'
+%    DPcurveup  - upper bounds
+%                 for the discrep. principle -- useful to produce plots
+%                                               requires 'plotty' 'on'
+%   DiscrepDots - coordinates of the parameters selected 
+%                 by the discrep. principle  -- useful to produce plots
+%                                               requires 'plotty' 'on'
+%   ReginLow    - lower bounds
+%                 for the Reginska functional-- useful to produce plots
+%                                               requires 'plotty' 'on'
+%    ReginUp    - upper bounds
+%                 for the Reginska functional-- useful to produce plots
+%                                               requires 'plotty' 'on'
+%   ReginDots   - coordinates of the parameters selected 
+%                 by the Reginska functional -- useful to produce plots
+%                                               requires 'plotty' 'on'
+
 % See also: IRcgls, IRhybrid_fgmres, IRhybrid_gmres, IRget, IRset
 
 % Silvia Gazzola, University of Bath
-% Per Christian Hansen, Technical University of Denmark
-% James G. Nagy, Emory University
-% April, 2018.
+% Malena Sabate Landman, University of Bath
+% June, 2020.
 
 % This file is part of the IR Tools package and is distributed under the 
 % 3-Clause BSD License. A separate license file should be provided as part 
@@ -167,7 +187,7 @@ defaultopt = struct('x0', 'none', 'MaxIter', 100,...
     'GCVflatTol', 10^-6, 'GCVminTol', 3, 'reginskaExp', 1, ...
     'stopGCV', 'GCVvalues', 'resflatTol', 0.05, 'regPflatTol', 0.9,...
     'NoiseLevel', 'none', 'eta', 1.01, 'RegParam0', 1, 'DecompOut', 'off',...
-    'plotty', 'on', 'RegParamRange', [1e-12, 1e6], 'RegParRegRange', [1e-10, 8e1],...
+    'plotty', 'off', 'RegParamRange', [1e-12, 1e6], 'RegParRegRange', [1e-10, 8e1],...
     'discrbilStopTol', 1e-3, 'regbilStopTol', 1e-1);
 
 if nargin == 0
@@ -291,11 +311,11 @@ if plotty
         DPcurveup     = zeros(MaxIter, nindex);
         coordinateslow= zeros(MaxIter,2);
     elseif strcmp(RegParam, {'reginskait'})
-        RA = zeros(MaxIter, nindex);
+        ReginProj = zeros(MaxIter, nindex);
     elseif strcmp(RegParam, {'reginskabil'})
-        R = zeros(MaxIter, nindex);
-        Lvect = zeros(MaxIter, nindex);
-        dotssol = zeros(MaxIter, nindex);
+        ReginUp = zeros(MaxIter, nindex);
+        ReginLow = zeros(MaxIter, nindex);
+        ReginDots = zeros(MaxIter, 2);
     else
         warning(strcat(' The ''plotty'' functionality is not available with the selected parameter choice rule. ',...
             'Plese select ''discrepit'', ''discrepbil'', ''reginskait'', or ''reginskabil'''))
@@ -343,13 +363,6 @@ if strcmp(RegParam,'optimal') && notrue
     error('The exact solution must be assigned (to compute the optimal regularization parameter)')
 end
 
-% assessing if we want inner Tikhonov regularization
-% if strcmp(RegParam,'off')
-%     tik = false;
-% else
-%     tik = true;
-% end
-% tik = true;
 if strcmp(RegParam,'off')
     RegParam = 0;
 end
@@ -660,7 +673,6 @@ for k=1:MaxIter
         LRksq = eye(k);
     end
     
-    % if tik
         if isscalar(RegParam)
             RegParamk = RegParam;
             RegParamVect(k) = RegParamk;
@@ -678,7 +690,6 @@ for k=1:MaxIter
                 invRegParamk = 1./sqrt(RegParamk);
                 discrfcnup  = @(betarp)discrfcnbound(Bk*Bk', rhsk, betarp, eta*NoiseLevel*nrmb);
                 if plotty
-                    %index = logspace(-12, 6, 200); % index = logspace(-24, 3, 200); % 
                     for jj = 1:nindex
                         DPcurveup(k,jj) = discrfcnup(index(jj));
                     end
@@ -691,7 +702,6 @@ for k=1:MaxIter
             discrfcnlow = @(betarp)discrfcnbound(Bk(1:k,1:k)*Bk(1:k,1:k)', rhsk(1:k), betarp, eta*NoiseLevel*nrmb);
             discrfcnup  = @(betarp)discrfcnbound(Bk*Bk', rhsk, betarp, eta*NoiseLevel*nrmb);
             if plotty
-            % index = logspace(-12, 6, 200); % index = logspace(-24, 3, 200); % 
             for jj = 1:nindex
                 DPcurvelow(k,jj) = discrfcnlow(index(jj));
                 DPcurveup(k,jj) = discrfcnup(index(jj));
@@ -705,14 +715,10 @@ for k=1:MaxIter
             end
         elseif strcmp(RegParam, 'reginskait')
                  RegParamk = fminbnd(@(l) Reginska_fcn(Bk, rhsk, l, xi), RegPRegRange(1), RegPRegRange(2)); %% careful with the bounds!! maybe [1e-10, 1], [0, 1e3]
-                 % [RegParamk,~,~,outputmin] = fminbnd(@(l) Reginska_fcn(Bk, rhsk, l, xi), RegPRegRange(1), RegPRegRange(2)); %% careful with the bounds!! maybe [1e-10, 1], [0, 1e3]
                  RegParamVect(k) = RegParamk;
-                 % reginskait_it(k) = outputmin.iterations;
-                 % info.reginskait_it = reginskait_it;
                  if plotty
                     for jj = 1:nindex
-                        RA(k,jj) = Reginska_fcn(Bk, rhsk, index(jj), xi);
-                        info.RA=RA;
+                        ReginProj(k,jj) = Reginska_fcn(Bk, rhsk, index(jj), xi);
                     end
                 end
         elseif strcmp(RegParam, 'reginskabil')
@@ -724,16 +730,10 @@ for k=1:MaxIter
                 Clhb = Clh(1:k,1:k-1);  
                 if plotty
                 if k>2
-                    dotssol(k,1) = RegParamk2;
-                    % [~, indz] = min(abs(RegParamk2 - index));
+                    ReginDots(k,1) = RegParamk2;
                 end
                 end
-                % lower_point = Bound_Reginska(Bk(1:k,1:k), Clh, sqrt(RegParamk2), nrmb, nrmAtb, xi);
-                % old_RegParamk2=RegParamk2;
                 [RegParamk2,outp] = newtonstepReginska_sqrt(Clb, Clhb, RegParamk2, betar, nrmAtb, xi);
-                % upper_point_der=outp.f1;
-                % upper_point=(outp.f);
-                
                 [~,output_reginska2] = newtonstepReginska_sqrt(Clb, Clhb, RegParamk2, nrmb, nrmAtb, xi);
                 upper_point_der2=output_reginska2.f1;
                 upper_point2 = Bound_Reginska(Clb, Clhb, sqrt(RegParamk2), nrmb, nrmAtb, xi);
@@ -742,25 +742,16 @@ for k=1:MaxIter
                 RegVal = outp.f;
                 if plotty
                 if k>2
-                    dotssol(k,2) = RegVal; % coordinates of the `solution'
-                    info.dotssol = dotssol;
+                    ReginDots(k,2) = RegVal; % coordinates of the `solution'
                 end
                 end
                 RegParamk=sqrt(RegParamk2);
                 RegParamVect(k) = RegParamk;
                 if plotty
-                % index = logspace(-2, 8, 120);
                 for jj = 1:nindex
-                    R(k,jj) = Bound_Reginska(Clb, Clhb, sqrt(index(jj)), betar, nrmAtb, xi); %%
-                    Lvect(k,jj) = Bound_Reginska(Bk(1:k,1:k), Clh, sqrt(index(jj)), betar, nrmAtb, xi);
-                    % [~, indz] = min(abs(sqrt(RegParamk2) - sqrt(index)));
-                    info.R=R;
-                    info.L=Lvect;
+                    ReginUp(k,jj) = Bound_Reginska(Clb, Clhb, sqrt(index(jj)), betar, nrmAtb, xi); %%
+                    ReginLow(k,jj) = Bound_Reginska(Bk(1:k,1:k), Clh, sqrt(index(jj)), betar, nrmAtb, xi);
                 end
-%                 if k>2
-%                     dotscurve(k,:) = [index(indz), R(k, indz)]; % on the upper bound (closes to the `solution')
-%                     info.dotscurve = dotscurve;
-%                 end
                 end
             else
                 RegParamVect(k) = RegParamk;
@@ -997,19 +988,24 @@ for k=1:MaxIter
                             X = X(:,1:j);
                             saved_iterations = saved_iterations(1:j);
                             % stop because the discrepancy principle is satisfied
+                            if plotty
+                                if strcmp(RegParam,'discrepit')
+                                DPcurveup = DPcurveup(1:k,:);
+                                coordinatesup = coordinatesup(1:k,:);
+                                else
+                                ReginProj = ReginProj(1:k,:);
+                                end
+                            end
                             break
                         end
                     end
                 end
             end
         elseif strcmp(RegParam,'discrepbil')
-            %%% !!! BETTER HANDLING OF THE OUTPUTS !!! %%%
             if k>2
                 % stopping criterion
                 if StopIt == MaxIter % the method has not stopped, yet
                     av_point = 0.5*(invRegParamkextra.f/nrmb^2+(Rnrm(k).^2)');
-                    info.Davpoin(j)=av_point;
-                    % upper_point = Rnrm(k)^2;
                     if av_point-(NoiseLevel)^2  < discrbilTol*(NoiseLevel)^2
                         if verbose
                             disp('The stopping criterion for the Newton iterations on the discrepancy principle is satisfied')
@@ -1043,6 +1039,11 @@ for k=1:MaxIter
                             X = X(:,1:j);
                             saved_iterations = saved_iterations(1:j);
                             % stop because the discrepancy principle is satisfied
+                            if plotty
+                            DPcurvelow = DPcurvelow(1:k,:);
+                            DPcurveup = DPcurveup(1:k,:);
+                            coordinateslow = coordinateslow(1:k,:);
+                            end
                             break
                         end
                     end
@@ -1052,13 +1053,9 @@ for k=1:MaxIter
             if k>2
                 % stopping criterion
                 if StopIt == MaxIter % the method has not stopped, yet
-                    %   sc1 = abs(old_RegParamk2-RegParamk2)/(0.5*abs(old_RegParamk2+RegParamk2))+abs(upper_point_der)./(abs(upper_point));
-                    %   Phat = 0.5*(upper_point+lower_point);
-                    %   sc2 = abs(upper_point-Phat)./abs(Phat)+abs(upper_point_der)./(abs(upper_point));
-                    % sc1 = abs(old_RegParamk2-RegParamk2)/(0.5*abs(old_RegParamk2+RegParamk2))+abs(upper_point_der2)./(abs(upper_point2));
                     Phat = 0.5*(upper_point2+lower_point2);
                     sc2 = abs(upper_point2-Phat)./abs(Phat)+abs(upper_point_der2)./(abs(upper_point2));
-                    info.Rsc2(j)=sc2;
+                    % info.Rsc2(j)=sc2;
                     if sc2  < regbilTol
                         if verbose
                             disp('The stopping criterion for the Newton iterations on the Reginska functional is satisfied')
@@ -1092,6 +1089,11 @@ for k=1:MaxIter
                             X = X(:,1:j);
                             saved_iterations = saved_iterations(1:j);
                             % stop because the discrepancy principle is satisfied
+                            if plotty
+                                ReginDots = ReginDots(1:k,:);
+                                ReginUp = ReginUp(1:k,:);
+                                ReginLow = ReginLow(1:k,:);
+                            end
                             break
                         end
                     end
@@ -1274,13 +1276,13 @@ for k=1:MaxIter
             end
             end
         elseif isscalar(RegParam)
-        % Purely iterative method case.
-        if strcmp(NoiseLevel, 'none')
+        if (RegParam == 0) && (NoiseLevel == 0)
+            % Purely iterative method case.
             if k>1
             if abs((Rnrm(k)-Rnrm(k-1)))/Rnrm(k-1) < resdegflat && ...
                 Rnrm(k) == min(Rnrm(1:k)) && StopIt == MaxIter
                 if verbose
-                    disp('The stopping criterion for fgmres is satisfied')
+                    disp('The stopping criterion for lsqr is satisfied')
                 end
                 % Stop because the residual stabilizes.
                 StopFlag = 'The residual norm stabilizes';
@@ -1352,48 +1354,7 @@ for k=1:MaxIter
             end
             end
         end
-%         elseif isscalar(RegParam)
-%             if StopIt == MaxIter
-%             if Rnrm(k) < NoiseLevel
-%                 if verbose
-%                     disp('The stopping criterion (discrepancy principle) for the iterations is satisfied')
-%                 end
-%                 % stop because discrepancy (i.e., residual for the
-%                 % regularized problem) stabilizes
-%                 StopFlag = 'the discrepancy principle is satisfied';
-%                 if ~AlreadySaved && ~NoStop
-%                     j = j+1;
-%                     X(:,j) = x;
-%                     if restart
-%                         saved_iterations(j) = ktotcount;
-%                     else
-%                         saved_iterations(j) = k;
-%                     end
-%                     AlreadySaved = 1;
-%                 end
-%                 StopIt = k;
-%                 StopReg.X = x;
-%                 StopReg.It = k;
-%                 StopReg.RegP = RegParamk;
-%                 StopReg.Xnrm = Xnrm(k);
-%                 StopReg.Rnrm = Rnrm(k);
-%                 if errornorms, StopReg.Enrm = Enrm(k); end
-%                 if ~ NoStop
-%                     Xnrm    = Xnrm(1:k);
-%                     Rnrm    = Rnrm(1:k);
-%                     RegParamVect    = RegParamVect(1:k);
-%                     V = V(:,1:k);
-%                     B = B(1:k+1,1:k);
-%                     U = U(:,1:k+1);
-%                     if errornorms, Enrm = Enrm(1:k); end
-%                     X = X(:,1:j);
-%                     saved_iterations = saved_iterations(1:j);
-%                     break
-%                 end
-%             end
-%             end
         end
-    % end
 end
 if k == MaxIter 
     if StopIt == MaxIter
@@ -1448,13 +1409,22 @@ if nargout==2
   if strcmp(RegParam,'wgcv') || strcmp(RegParam,'gcv') || strcmp(RegParam,'modgcv')
     info.GCValues = GCV(1:k);
   end
+  if plotty
+  info.RegPrange = index;
   if strcmp(RegParam,'discrepbil')
       info.DPcurvelow = DPcurvelow;
       info.DPcurveup = DPcurveup;
-      info.dots = coordinateslow;
+      info.DiscrepDots = coordinateslow;
   elseif strcmp(RegParam,'discrepit')
       info.DPcurveup = DPcurveup;
-      info.dots = coordinatesup;
+      info.DiscrepDots = coordinatesup;
+  elseif strcmp(RegParam,'reginskait')
+      info.ReginProj = ReginProj;
+  elseif strcmp(RegParam,'reginskabil')      
+      info.ReginDots = ReginDots;
+      info.ReginUp = ReginUp;
+      info.ReginLow = ReginLow;
+  end
   end
   if strcmp(DecompOut,'on')
       info.V = V;
